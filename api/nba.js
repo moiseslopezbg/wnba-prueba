@@ -1,7 +1,6 @@
 // Vercel Serverless Function — WNBA Stats proxy
-// Uses the WNBA Stats host and keeps LeagueID first in the query string.
-// The WNBA Stats API has been returning HTML/Cloudflare pages for some
-// parameter orderings, so do NOT replace this with stats.nba.com.
+// Uses the WNBA LeagueGameLog endpoint. In 2026 this endpoint is the
+// maintained game-by-game source for player/team logs.
 
 const TEAMS = new Set([
   "ATL", "CHI", "CON", "DAL", "GSV", "IND", "LVA",
@@ -31,12 +30,12 @@ function rowsFromResult(data) {
 function opponent(matchup, team) {
   const m = String(matchup || "");
   const t = String(team || "");
-  const cleaned = m
+  return m
     .replace(t, "")
     .replace("vs.", "")
     .replace("@", "")
-    .replace(/\s+/g, "");
-  return cleaned;
+    .replace(/\s+/g, "")
+    .trim();
 }
 
 function normalisePlayers(rows) {
@@ -76,7 +75,7 @@ function normaliseTeams(rows) {
 }
 
 async function fetchWNBA(playerOrTeam, season) {
-  // IMPORTANT: keep these in this order.
+  // LeagueID MUST be first. This ordering is important for the WNBA API.
   const params = new URLSearchParams();
   params.set("LeagueID", "10");
   params.set("PlayerOrTeam", playerOrTeam);
@@ -84,55 +83,67 @@ async function fetchWNBA(playerOrTeam, season) {
   params.set("SeasonType", "Regular Season");
 
   const url =
-    "https://stats.wnba.com/stats/leaguegamefinder?" + params.toString();
+    "https://stats.wnba.com/stats/leaguegamelog?" + params.toString();
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "Accept": "application/json, text/plain, */*",
-      "Referer": "https://www.wnba.com/",
-      "Origin": "https://www.wnba.com",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
-      "x-nba-stats-origin": "stats",
-      "x-nba-stats-token": "true"
-    }
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
 
-  const text = await response.text();
-
-  if (!response.ok) {
-    throw new Error(
-      `WNBA Stats HTTP ${response.status}: ${text.slice(0, 180)}`
-    );
-  }
-
-  // Do not blindly call response.json(): WNBA Stats can return HTML.
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("json") && !text.trim().startsWith("{")) {
-    throw new Error(
-      `WNBA Stats devolvió ${contentType || "texto"} en vez de JSON: ` +
-      text.slice(0, 180)
-    );
-  }
-
-  let data;
   try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`Respuesta WNBA no válida: ${text.slice(0, 180)}`);
-  }
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.wnba.com/",
+        "Origin": "https://www.wnba.com",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+        "x-nba-stats-origin": "stats",
+        "x-nba-stats-token": "true"
+      }
+    });
 
-  return rowsFromResult(data);
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `WNBA Stats HTTP ${response.status}: ${text.slice(0, 180)}`
+      );
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("json") && !text.trim().startsWith("{")) {
+      throw new Error(
+        `WNBA Stats devolvió ${contentType || "texto"} en vez de JSON: ` +
+        text.slice(0, 180)
+      );
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`Respuesta WNBA no válida: ${text.slice(0, 180)}`);
+    }
+
+    return rowsFromResult(data);
+  } catch (e) {
+    if (e?.name === "AbortError") {
+      throw new Error("La API WNBA tardó más de 12 segundos en responder.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 module.exports = async function handler(req, res) {
   try {
     const type = String(req.query?.type || "players").toLowerCase();
-
-    // WNBA seasons are represented by a single year (e.g. 2026).
-    const season = Number(req.query?.season || new Date().getUTCFullYear());
+    const season = Number(
+      req.query?.season || new Date().getUTCFullYear()
+    );
 
     if (!Number.isInteger(season) || season < 1997 || season > 2100) {
       return json(res, 400, {
@@ -141,29 +152,28 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    if (type === "players") {
-      const rows = normalisePlayers(
-        await fetchWNBA("P", season)
-      );
+    const rows = await fetchWNBA(type === "teams" ? "T" : "P", season);
+    const clean = type === "teams"
+      ? normaliseTeams(rows)
+      : normalisePlayers(rows);
 
+    if (type === "teams") {
       return json(res, 200, {
         ok: true,
         season,
-        players: rows,
-        data: rows
+        rows: clean,
+        teams: clean,
+        data: clean
       });
     }
 
-    if (type === "teams") {
-      const rows = normaliseTeams(
-        await fetchWNBA("T", season)
-      );
-
+    if (type === "players") {
       return json(res, 200, {
         ok: true,
         season,
-        teams: rows,
-        data: rows
+        rows: clean,
+        players: clean,
+        data: clean
       });
     }
 

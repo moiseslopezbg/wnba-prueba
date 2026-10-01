@@ -109,19 +109,30 @@ function table(rows, cols){
 }
 function setStatus(msg, cls=''){ $('loading').className='status '+cls; $('loading').textContent=msg; }
 
+async function fetchJson(url){
+  const r=await fetch(url);
+  const text=await r.text();
+  let data;
+  try{ data=JSON.parse(text); }
+  catch{ throw new Error(`Respuesta no válida de ${url}: ${text.slice(0,160)}`); }
+  if(!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
 async function load(){
+  setStatus('Cargando datos WNBA… (puede tardar unos segundos)','');
   try{
     const [p,t]=await Promise.all([
-      fetch('/api/nba?type=players').then(r=>r.json()),
-      fetch('/api/nba?type=teams').then(r=>r.json())
+      fetchJson('/api/nba?type=players'),
+      fetchJson('/api/nba?type=teams')
     ]);
-    if(p.error) throw new Error(p.error);
-    if(t.error) throw new Error(t.error);
-    playerRows=(p.rows||[]).map(cleanRow).filter(r=>TEAMS.includes(r.TEAM_ABBREVIATION));
-    teamRows=(t.rows||[]).map(cleanRow).filter(r=>TEAMS.includes(r.TEAM_ABBREVIATION));
+    playerRows=(p.rows||p.players||p.data||[]).map(cleanRow).filter(r=>TEAMS.includes(r.TEAM_ABBREVIATION));
+    teamRows=(t.rows||t.teams||t.data||[]).map(cleanRow).filter(r=>TEAMS.includes(r.TEAM_ABBREVIATION));
+    if(!playerRows.length) throw new Error('La API no devolvió registros de jugadoras.');
     populateFilters(); render();
     setStatus(`Datos cargados: ${playerRows.length.toLocaleString()} registros de jugadoras y ${teamRows.length.toLocaleString()} de equipos.`,'success');
-  }catch(e){ setStatus('No se pudieron cargar los datos WNBA: '+e.message,'error'); }
+  }catch(e){
+    setStatus('No se pudieron cargar los datos WNBA: '+e.message,'error');
+  }
 }
 function populateFilters(){
   const players=[...new Set(playerRows.map(r=>r.PLAYER_NAME).filter(Boolean))].sort();
