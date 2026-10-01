@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WNBA Complete Analytics & Live Odds Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#121a2d; --panel2:#18223a; --text:#f4f7fb;
+      --muted:#9ba8bf; --line:#27334f; --accent:#7c5cff; --green:#39d98a;
+      --danger:#ff6b6b; --shadow:0 14px 40px rgba(0,0,0,.25);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(135deg,#080c18,#10182a 55%,#0b1020);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    .layout{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+    aside{padding:22px;border-right:1px solid var(--line);background:rgba(10,15,28,.92);position:sticky;top:0;height:100vh}
+    main{padding:28px;max-width:1600px;width:100%;margin:auto}
+    h1{font-size:30px;margin:0 0 8px}.sub{color:var(--muted);margin-bottom:22px}
+    hr{border:0;border-top:1px solid var(--line);margin:20px 0}
+    label{display:block;font-size:13px;color:var(--muted);margin:13px 0 7px}
+    select,input,button{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;padding:11px 12px;font-size:14px}
+    button{cursor:pointer;background:var(--accent);border-color:var(--accent);font-weight:700}
+    button.secondary{background:var(--panel2);border-color:var(--line)}
+    .nav button{margin-bottom:8px;text-align:left}.nav button.active{background:linear-gradient(90deg,var(--accent),#5b43d6)}
+    .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:15px 0}
+    .cards.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .card,.section{background:rgba(18,26,45,.88);border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow)}
+    .card{padding:16px}.metric{font-size:25px;font-weight:800;margin-top:6px}.metric-label{color:var(--muted);font-size:12px}
+    .section{padding:20px;margin-top:18px}.section h2,.section h3{margin:0 0 14px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left}th{color:#c7d0e2;background:var(--panel2)}
+    .table-wrap{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:10px}
+    .status{padding:10px 12px;border-radius:10px;background:var(--panel2);color:var(--muted);margin:10px 0}
+    .success{color:var(--green)}.error{color:var(--danger)}
+    .hidden{display:none}.chartbox{height:330px}.small{font-size:12px;color:var(--muted)}
+    .odds-card{border:1px solid var(--line);padding:16px;border-radius:12px;margin:12px 0;background:var(--panel)}
+    .odds-card summary{cursor:pointer;font-weight:800}.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:var(--panel2);font-size:11px;color:var(--muted)}
+    @media(max-width:1050px){.layout{grid-template-columns:1fr}aside{position:relative;height:auto}.cards,.cards.four{grid-template-columns:repeat(2,1fr)}.grid2,.grid3,.controls{grid-template-columns:1fr}}
+    @media(max-width:600px){main{padding:16px}.cards,.cards.four{grid-template-columns:1fr}h1{font-size:23px}}
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <h2>🧭 Navegación</h2>
+    <div class="nav">
+      <button class="active" data-module="players">👤 Análisis de Jugadoras</button>
+      <button data-module="teams">🏢 Análisis de Equipos</button>
+      <button data-module="odds">🎯 Cuotas en Vivo</button>
+    </div>
+    <hr>
+    <div id="playerFilters">
+      <h3>🔍 Filtros</h3>
+      <label>Jugadora</label><select id="playerSelect"></select>
+      <label>Modo de análisis</label>
+      <select id="playerMode"><option value="season">📊 Vista General (Temporada)</option><option value="rival">⚔️ vs. Rival Específico</option></select>
+      <div id="rivalWrap" class="hidden"><label>Rival</label><select id="rivalSelect"></select></div>
+    </div>
+    <div id="teamFilters" class="hidden">
+      <h3>⚙️ Opciones de Equipos</h3>
+      <label>Vista</label>
+      <select id="teamMode">
+        <option value="ranking">📊 Ranking General de Equipos</option>
+        <option value="h2h">⚔️ Comparador Directo H2H</option>
+        <option value="matrix">🔥 Matriz Completa de Enfrentamientos</option>
+      </select>
+    </div>
+    <div id="oddsFilters" class="hidden">
+      <h3>🔑 Cuotas</h3>
+      <div class="status">La clave de The Odds API se configura como variable de entorno <b>ODDS_API_KEY</b> en Vercel. No se expone al navegador.</div>
+    </div>
+  </aside>
+
+  <main>
+    <h1>🏀 WNBA Complete Analytics & Live Odds Dashboard</h1>
+    <div class="sub">Versión web del dashboard original de Streamlit.</div>
+
+    <div id="loading" class="status">Cargando datos WNBA…</div>
+    <div id="app"></div>
+  </main>
+</div>
+
+<script>
+const TEAMS = ['ATL','CHI','CON','DAL','GSV','IND','LVA','LAS','MIN','NYL','PHX','PDX','SEA','TOR','WAS'];
+const STATS = ['PTS','REB','AST','FG3M','PRA','PR','PA','AR'];
+let playerRows=[], teamRows=[], module='players', chart=null;
+
+const $ = id => document.getElementById(id);
+const num = v => Number(v || 0);
+const avg = (rows,k) => rows.length ? rows.reduce((s,r)=>s+num(r[k]),0)/rows.length : 0;
+const fmt = n => Number(n).toFixed(1);
+
+function cleanRow(r){
+  const x={...r};
+  x.PTS=num(x.PTS); x.REB=num(x.REB); x.AST=num(x.AST); x.FG3M=num(x.FG3M);
+  x.PRA=x.PTS+x.REB+x.AST; x.PR=x.PTS+x.REB; x.PA=x.PTS+x.AST; x.AR=x.AST+x.REB;
+  x.GAME_DATE=x.GAME_DATE ? new Date(x.GAME_DATE) : new Date(0);
+  x.RIVAL=String(x.MATCHUP||'').replace(String(x.TEAM_ABBREVIATION||''),'').replace('vs.','').replace('@','').replaceAll(' ','').trim();
+  return x;
+}
+function metric(label,value,sub=''){return `<div class="card"><div class="metric-label">${label}</div><div class="metric">${value}</div>${sub?`<div class="small">${sub}</div>`:''}</div>`}
+function table(rows, cols){
+  if(!rows.length) return '<div class="status">No hay registros.</div>';
+  return `<div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${
+    rows.map(r=>`<tr>${cols.map(c=>`<td>${c==='GAME_DATE'?r[c].toLocaleDateString('es-ES'):(r[c]??'-')}</td>`).join('')}</tr>`).join('')
+  }</tbody></table></div>`;
+}
+function setStatus(msg, cls=''){ $('loading').className='status '+cls; $('loading').textContent=msg; }
+
+async function load(){
+  try{
+    const [p,t]=await Promise.all([
+      fetch('/api/nba?type=players').then(r=>r.json()),
+      fetch('/api/nba?type=teams').then(r=>r.json())
+    ]);
+    if(p.error) throw new Error(p.error);
+    if(t.error) throw new Error(t.error);
+    playerRows=(p.rows||[]).map(cleanRow).filter(r=>TEAMS.includes(r.TEAM_ABBREVIATION));
+    teamRows=(t.rows||[]).map(cleanRow).filter(r=>TEAMS.includes(r.TEAM_ABBREVIATION));
+    populateFilters(); render();
+    setStatus(`Datos cargados: ${playerRows.length.toLocaleString()} registros de jugadoras y ${teamRows.length.toLocaleString()} de equipos.`,'success');
+  }catch(e){ setStatus('No se pudieron cargar los datos WNBA: '+e.message,'error'); }
+}
+function populateFilters(){
+  const players=[...new Set(playerRows.map(r=>r.PLAYER_NAME).filter(Boolean))].sort();
+  $('playerSelect').innerHTML=players.map(p=>`<option>${p}</option>`).join('');
+  $('rivalSelect').innerHTML=TEAMS.map(t=>`<option>${t}</option>`).join('');
+}
+function render(){
+  $('playerFilters').classList.toggle('hidden',module!=='players');
+  $('teamFilters').classList.toggle('hidden',module!=='teams');
+  $('oddsFilters').classList.toggle('hidden',module!=='odds');
+  if(module==='players') renderPlayers();
+  if(module==='teams') renderTeams();
+  if(module==='odds') renderOdds();
+}
+function renderPlayers(){
+  const name=$('playerSelect').value, mode=$('playerMode').value, rival=$('rivalSelect').value;
+  let rows=playerRows.filter(r=>r.PLAYER_NAME===name).sort((a,b)=>b.GAME_DATE-a.GAME_DATE);
+  const recent=rows.slice(0,20);
+  const first=rows[0];
+  if(!first){$('app').innerHTML='<div class="status">No hay datos para esta jugadora.</div>';return}
+  const view=mode==='rival'?rows.filter(r=>r.RIVAL===rival).slice(0,5):rows;
+  const base=view.length?view:rows;
+  const meanStats=STATS.map(s=>avg(base,s));
+  const labels=['PTS','REB','AST','3PM','PRA','PR','PA','AR'];
+  const cards=labels.map((l,i)=>metric('Prom. '+l,fmt(meanStats[i]))).join('');
+  $('app').innerHTML=`
+    <div class="section"><h2>👤 ${name} (${first.TEAM_ABBREVIATION||'-'})</h2>
+      <div class="cards">${cards}${metric('Partidos',rows.length)}</div>
+    </div>
+    <div class="section"><h2>🎯 Calculadora de Aciertos</h2>
+      <div class="controls">
+        <div><label>Estadística</label><select id="statSelect">${STATS.map(s=>`<option>${s}</option>`).join('')}</select></div>
+        <div><label>Línea propuesta</label><input id="lineInput" type="number" step="0.5" value="${fmt(avg(rows,'PTS'))}"></div>
+      </div>
+      <div id="hitCards" class="cards four"></div>
+    </div>
+    <div class="section">
+      <h2>${mode==='season'?'📈 Rendimiento General - Partido a Partido':'⚔️ Enfrentamientos Recientes vs '+rival}</h2>
+      ${mode==='season'?`
+        <div class="controls">
+          <div><label>Últimos N partidos</label><input id="nGames" type="number" min="5" max="${Math.max(5,rows.length)}" value="${Math.min(10,Math.max(5,rows.length))}"></div>
+          <div><label>Métricas</label><select id="chartStat">${STATS.map(s=>`<option>${s}</option>`).join('')}</select></div>
+        </div>
+        <div class="chartbox"><canvas id="playerChart"></canvas></div>
+        <h3>📋 Desglose</h3>${table(recent, ['GAME_DATE','MATCHUP','PTS','REB','AST','FG3M','PRA','PR','PA','AR'])}
+      `:
+        `<div class="cards four">${['PTS','REB','AST','FG3M','PRA','PR','PA','AR'].map(s=>metric(s+' vs '+rival,fmt(avg(view,s)))).join('')}</div>
+         ${view.length?table(view,['GAME_DATE','MATCHUP','PTS','REB','AST','FG3M','PRA','PR','PA','AR']):`<div class="status">No hay registros disputados por ${name} contra ${rival} esta temporada.</div>`}`
+    }</div>`;
+  updateHitCards(rows); if(mode==='season') drawPlayerChart(rows);
+  $('statSelect').onchange=()=>updateHitCards(rows);
+  $('lineInput').oninput=()=>updateHitCards(rows);
+  if($('nGames')) $('nGames').oninput=()=>drawPlayerChart(rows);
+  if($('chartStat')) $('chartStat').onchange=()=>drawPlayerChart(rows);
+}
+function updateHitCards(rows){
+  const stat=$('statSelect').value, line=num($('lineInput').value);
+  const groups=[['Últ. 10',rows.slice(0,10)],['Últ. 20',rows.slice(0,20)],['Temporada',rows]];
+  $('hitCards').innerHTML=groups.map(([label,g])=>{
+    const hit=g.filter(r=>num(r[stat])>line).length, pct=g.length?hit/g.length*100:0;
+    return metric(`Acierto Over ${line} (${label})`,Math.round(pct)+'%',`${hit}/${g.length} partidos`);
+  }).join('');
+}
+function drawPlayerChart(rows){
+  const n=Math.max(5,Math.min(rows.length,num($('nGames')?.value)||10)), stat=$('chartStat')?.value||'PTS';
+  const data=rows.slice(0,n).reverse();
+  if(chart) chart.destroy();
+  chart=new Chart($('playerChart'),{type:'line',data:{labels:data.map(r=>r.GAME_DATE.toLocaleDateString('es-ES')),datasets:[{label:stat,data:data.map(r=>r[stat]),tension:.3}]},options:{responsive:true,maintainAspectRatio:false}});
+}
+function renderTeams(){
+  const mode=$('teamMode').value;
+  if(mode==='ranking') renderRanking();
+  if(mode==='h2h') renderH2H();
+  if(mode==='matrix') renderMatrix();
+}
+function renderRanking(){
+  const map={};
+  teamRows.forEach(r=>{
+    const t=r.TEAM_ABBREVIATION, o=r.RIVAL; if(!map[t])map[t]={f:[],against:[]};
+    map[t].f.push(r.PTS);
+    const opp=teamRows.find(x=>x.TEAM_ABBREVIATION===o && x.RIVAL===t);
+    if(opp) map[t].against.push(opp.PTS);
+  });
+  const data=Object.entries(map).map(([t,v])=>({TEAM:t,ATT:avg(v.f.map(x=>({v:x})),'v'),DEF:avg(v.against.map(x=>({v:x})),'v')})).map(x=>({...x,NET:x.ATT-x.DEF})).sort((a,b)=>b.ATT-a.ATT);
+  $('app').innerHTML=`<div class="section"><h2>📈 Rendimiento Ofensivo y Defensivo</h2>${table(data.map(x=>({'TEAM':x.TEAM,'PTS Favor / Partido (Ataque)':fmt(x.ATT),'PTS En Contra / Partido (Defensa)':fmt(x.DEF),'Diferencial (Net Rating)':fmt(x.NET)})),['TEAM','PTS Favor / Partido (Ataque)','PTS En Contra / Partido (Defensa)','Diferencial (Net Rating)'])}</div>`;
+}
+function renderH2H(){
+  $('app').innerHTML=`<div class="section"><h2>⚔️ Enfrentamiento Directo Entre Franquicias</h2>
+    <div class="controls"><div><label>Equipo A</label><select id="eqA">${TEAMS.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div><label>Equipo B</label><select id="eqB"></select></div></div><div id="h2hResult"></div></div>`;
+  function fillB(){const a=$('eqA').value;$('eqB').innerHTML=TEAMS.filter(t=>t!==a).map(t=>`<option>${t}</option>`).join('');showH2H()}
+  function showH2H(){
+    const a=$('eqA').value,b=$('eqB').value;
+    const ab=teamRows.filter(r=>r.TEAM_ABBREVIATION===a&&r.RIVAL===b);
+    const ba=teamRows.filter(r=>r.TEAM_ABBREVIATION===b&&r.RIVAL===a);
+    $('h2hResult').innerHTML=ab.length?`<div class="cards">${metric(`PTS Prom. ${a} vs ${b}`,fmt(avg(ab,'PTS')))}${metric(`PTS Prom. ${b} vs ${a}`,fmt(avg(ba,'PTS')))}${metric('Partidos Jugados esta Temp.',ab.length)}</div>${table(ab,['GAME_DATE','MATCHUP','PTS','WL'])}`:`<div class="status">No hay partidos disputados esta temporada entre ${a} y ${b}.</div>`;
+  }
+  $('eqA').onchange=fillB;$('eqB').onchange=showH2H;fillB();
+}
+function renderMatrix(){
+  const cells=TEAMS.map(t=>`<th>${t}</th>`).join('');
+  const rows=TEAMS.map(t=>`<tr><th>${t}</th>${TEAMS.map(o=>{const r=teamRows.filter(x=>x.TEAM_ABBREVIATION===t&&x.RIVAL===o);return `<td>${r.length?fmt(avg(r,'PTS')):'-'}</td>`}).join('')}</tr>`).join('');
+  $('app').innerHTML=`<div class="section"><h2>🔥 Matriz Completa de Puntos</h2><p class="small">Promedio de puntos que anota el equipo de la fila frente al rival de la columna.</p><div class="table-wrap"><table><thead><tr><th>Equipo</th>${cells}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+async function renderOdds(){
+  $('app').innerHTML='<div class="section"><h2>🎯 Cuotas de Apuestas en Tiempo Real (WNBA)</h2><div id="oddsContent" class="status">Consultando cuotas…</div></div>';
+  try{
+    const r=await fetch('/api/odds'); const data=await r.json();
+    if(data.error) throw new Error(data.error);
+    $('oddsContent').className=''; $('oddsContent').innerHTML=`<div class="status success">Se han encontrado ${data.length} próximos encuentros con cuotas disponibles.</div>`+
+      data.map(game=>`<details class="odds-card"><summary>🏀 ${game.away_team} @ ${game.home_team} — ${new Date(game.commence_time).toLocaleString('es-ES')}</summary>${renderBookmakers(game)}</details>`).join('');
+  }catch(e){$('oddsContent').className='status error';$('oddsContent').textContent=e.message}
+}
+function renderBookmakers(game){
+  let rows=[];
+  for(const bk of (game.bookmakers||[])) for(const market of (bk.markets||[])) if(market.key==='h2h'){
+    const o=Object.fromEntries((market.outcomes||[]).map(x=>[x.name,x.price]));
+    rows.push({'Casa de Apuestas':bk.title,[`Cuota ${game.home_team}`]:o[game.home_team]??'-',[`Cuota ${game.away_team}`]:o[game.away_team]??'-'});
+  }
+  return table(rows,Object.keys(rows[0]||{'Casa de Apuestas':'-' }));
+}
+
+document.querySelectorAll('.nav button').forEach(btn=>btn.onclick=()=>{module=btn.dataset.module;document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));btn.classList.add('active');render()});
+$('playerMode').onchange=()=>{$('rivalWrap').classList.toggle('hidden',$('playerMode').value!=='rival');renderPlayers()};
+$('playerSelect').onchange=renderPlayers;$('rivalSelect').onchange=renderPlayers;$('teamMode').onchange=renderTeams;
+load();
+</script>
+</body>
+</html>
